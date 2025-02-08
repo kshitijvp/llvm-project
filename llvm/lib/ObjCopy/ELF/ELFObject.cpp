@@ -2292,7 +2292,7 @@ Error Object::removeSymbols(function_ref<bool(const Symbol &)> ToRemove) {
   if (SymbolTable)
     for (const SecPtr &Sec : Sections)
       if (Error E = Sec->removeSymbols(ToRemove)) {
-        if (isVerboseEnabled){
+        if (isVerboseEnabled) {
           llvm::outs() << "Removed Symbols:" << Sec->Name;
         }
         return E;
