@@ -1195,7 +1195,7 @@ public:
   uint32_t Flags;
 
   bool HadShdrs = true;
-  bool isVerboseEnabled = true;
+  bool isVerboseEnabled = false;
   bool MustBeRelocatable = false;
   StringTableSection *SectionNames = nullptr;
   SymbolTableSection *SymbolTable = nullptr;
