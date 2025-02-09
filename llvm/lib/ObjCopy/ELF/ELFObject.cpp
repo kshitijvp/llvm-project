@@ -766,9 +766,10 @@ Error SymbolTableSection::removeSymbols(
     function_ref<bool(const Symbol &)> ToRemove) {
   Symbols.erase(
       std::remove_if(std::begin(Symbols) + 1, std::end(Symbols),
-               [ToRemove](const SymPtr &Sym) {
+               [&](const SymPtr &Sym) {
                    if (ToRemove(*Sym)) {
-                       llvm::outs() << "Symbols Removed:" << Sym->Name<< "\n";
+                       if(isVerboseFlag)
+                         llvm::outs() << "Symbols Removed:" << Sym->Name<< "\n";
                        return true;
                    }
                    return false;
