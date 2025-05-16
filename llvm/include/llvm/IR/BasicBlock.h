@@ -280,14 +280,24 @@ public:
   /// When adding instructions to the beginning of the basic block, they should
   /// be added before the returned value, not before the first instruction,
   /// which might be PHI. Returns 0 is there's no non-PHI instruction.
-  const Instruction* getFirstNonPHI() const;
-  Instruction* getFirstNonPHI() {
-    return const_cast<Instruction *>(
-                       static_cast<const BasicBlock *>(this)->getFirstNonPHI());
-  }
+  ///
+  /// Deprecated in favour of getFirstNonPHIIt, which returns an iterator that
+  /// preserves some debugging information.
+  LLVM_DEPRECATED("Use iterators as instruction positions", "getFirstNonPHIIt")
+  const Instruction *getFirstNonPHI() const;
+  LLVM_DEPRECATED("Use iterators as instruction positions instead",
+                  "getFirstNonPHIIt")
+  Instruction *getFirstNonPHI();
 
-  /// Iterator returning form of getFirstNonPHI. Installed as a placeholder for
-  /// the RemoveDIs project that will eventually remove debug intrinsics.
+  /// Returns an iterator to the first instruction in this block that is not a
+  /// PHINode instruction.
+  ///
+  /// When adding instructions to the beginning of the basic block, they should
+  /// be added before the returned value, not before the first instruction,
+  /// which might be PHI. Returns end() if there's no non-PHI instruction.
+  ///
+  /// Avoid unwrapping the iterator to an Instruction* before inserting here,
+  /// as important debug-info is preserved in the iterator.
   InstListType::const_iterator getFirstNonPHIIt() const;
   InstListType::iterator getFirstNonPHIIt() {
     BasicBlock::iterator It =
@@ -554,6 +564,24 @@ private:
                            BasicBlock::iterator FromBeginIt,
                            BasicBlock::iterator FromEndIt);
 
+  enum {
+    HasAddressTaken = 1 << 0,
+    InstrOrderValid = 1 << 1,
+  };
+
+  void setHasAddressTaken(bool B) {
+    if (B)
+      SubclassOptionalData |= HasAddressTaken;
+    else
+      SubclassOptionalData &= ~HasAddressTaken;
+  }
+
+  /// Shadow Value::setValueSubclassData with a private forwarding method so
+  /// that any future subclasses cannot accidentally use it.
+  void setValueSubclassData(unsigned short D) {
+    Value::setValueSubclassData(D);
+  }
+
 public:
   /// Returns a pointer to the symbol table if one exists.
   ValueSymbolTable *getValueSymbolTable();
@@ -659,7 +687,7 @@ public:
   /// Returns true if there are any uses of this basic block other than
   /// direct branches, switches, etc. to it.
   bool hasAddressTaken() const {
-    return getBasicBlockBits().BlockAddressRefCount != 0;
+    return SubclassOptionalData & HasAddressTaken;
   }
 
   /// Update all phi nodes in this basic block to refer to basic block \p New
@@ -701,15 +729,13 @@ public:
 
   /// Returns true if the Order field of child Instructions is valid.
   bool isInstrOrderValid() const {
-    return getBasicBlockBits().InstrOrderValid;
+    return SubclassOptionalData & InstrOrderValid;
   }
 
   /// Mark instruction ordering invalid. Done on every instruction insert.
   void invalidateOrders() {
     validateInstrOrdering();
-    BasicBlockBits Bits = getBasicBlockBits();
-    Bits.InstrOrderValid = false;
-    setBasicBlockBits(Bits);
+    SubclassOptionalData &= ~InstrOrderValid;
   }
 
   /// Renumber instructions and mark the ordering as valid.
@@ -724,63 +750,6 @@ public:
   /// each ordering to ensure that transforms have the same algorithmic
   /// complexity when asserts are enabled as when they are disabled.
   void validateInstrOrdering() const;
-
-private:
-#if defined(_AIX) && (!defined(__GNUC__) || defined(__clang__))
-// Except for GCC; by default, AIX compilers store bit-fields in 4-byte words
-// and give the `pack` pragma push semantics.
-#define BEGIN_TWO_BYTE_PACK() _Pragma("pack(2)")
-#define END_TWO_BYTE_PACK() _Pragma("pack(pop)")
-#else
-#define BEGIN_TWO_BYTE_PACK()
-#define END_TWO_BYTE_PACK()
-#endif
-
-  BEGIN_TWO_BYTE_PACK()
-  /// Bitfield to help interpret the bits in Value::SubclassData.
-  struct BasicBlockBits {
-    unsigned short BlockAddressRefCount : 15;
-    unsigned short InstrOrderValid : 1;
-  };
-  END_TWO_BYTE_PACK()
-
-#undef BEGIN_TWO_BYTE_PACK
-#undef END_TWO_BYTE_PACK
-
-  /// Safely reinterpret the subclass data bits to a more useful form.
-  BasicBlockBits getBasicBlockBits() const {
-    static_assert(sizeof(BasicBlockBits) == sizeof(unsigned short),
-                  "too many bits for Value::SubclassData");
-    unsigned short ValueData = getSubclassDataFromValue();
-    BasicBlockBits AsBits;
-    memcpy(&AsBits, &ValueData, sizeof(AsBits));
-    return AsBits;
-  }
-
-  /// Reinterpret our subclass bits and store them back into Value.
-  void setBasicBlockBits(BasicBlockBits AsBits) {
-    unsigned short D;
-    memcpy(&D, &AsBits, sizeof(D));
-    Value::setValueSubclassData(D);
-  }
-
-  /// Increment the internal refcount of the number of BlockAddresses
-  /// referencing this BasicBlock by \p Amt.
-  ///
-  /// This is almost always 0, sometimes one possibly, but almost never 2, and
-  /// inconceivably 3 or more.
-  void AdjustBlockAddressRefCount(int Amt) {
-    BasicBlockBits Bits = getBasicBlockBits();
-    Bits.BlockAddressRefCount += Amt;
-    setBasicBlockBits(Bits);
-    assert(Bits.BlockAddressRefCount < 255 && "Refcount wrap-around");
-  }
-
-  /// Shadow Value::setValueSubclassData with a private forwarding method so
-  /// that any future subclasses cannot accidentally use it.
-  void setValueSubclassData(unsigned short D) {
-    Value::setValueSubclassData(D);
-  }
 };
 
 // Create wrappers for C Binding types (see CBindingWrapping.h).
